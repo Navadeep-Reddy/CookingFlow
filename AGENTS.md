@@ -26,6 +26,13 @@ Every video edit for this channel (cooking content, Instagram Reels) must follow
 
 - Every deliverable is an Instagram Reel: 9:16 vertical, final video under 60 seconds.
 
+## Music
+
+- Never start the song at its beginning and hard-cut at the video's end. Find the song's hook / high-energy section (the part that grabs scrollers) and use that.
+- Cut, place, and assemble the song intelligently so the video rides the song's energy — make an educated call when the song must be trimmed or rearranged to fit 60 s.
+- Give the song proper transitions: fade in at the start, fade out at the end (or an intelligent fade transition if energy allows a harder cut).
+- If the song contains vocals or stray noise that doesn't fit the edit, remove them — it must read as clean instrumental behind the cooking audio.
+
 ## Beat sync
 
 - Beats must align with the video's distinct cooking sounds — each chop, pour, or placement lands on a beat (`scenes.py --beats`, `cut.py --snap`).
