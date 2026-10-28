@@ -3,13 +3,12 @@
 
 Run from any directory: python3 /path/to/repo/reset.py [--dry-run]
 Clears work/ and workdir/ (including working Markdown), root audio/video
-exports, and root *_project.json render recipes. Recreates progress.md from
-the workflow index. Source directories, assets, and workflow docs are preserved.
+exports, and root *_project.json render recipes. Recreates a fresh progress.md.
+Source directories, assets, and workflow docs are preserved.
 """
 
 import argparse
 from pathlib import Path
-import re
 import shutil
 import subprocess
 
@@ -21,16 +20,24 @@ MEDIA_EXTENSIONS = {
 }
 
 
-def fresh_progress(root):
-    """Use the index's actual checklist rather than a second copy of it."""
-    index = (root / "workflow" / "00-index.md").read_text(encoding="utf-8")
-    match = re.search(
-        r"^## `workdir/progress\.md` template\s*\n.*?^```[^\n]*\n(.*?)^```",
-        index, re.MULTILINE | re.DOTALL,
-    )
-    if not match or "- [ ]" not in match.group(1):
-        raise ValueError("Cannot find the progress checklist in workflow/00-index.md")
-    return match.group(1).rstrip() + "\n"
+def fresh_progress():
+    """Return a fresh checklist without depending on workflow documentation."""
+    return """# Edit progress
+
+## Selected inputs
+- Clips:
+- Music:
+
+## Steps
+- [ ] 0 — Preflight
+- [ ] 1 — Footage analysis
+- [ ] 2 — Music analysis
+- [ ] 3 — Edit plan
+- [ ] 4 — Framing
+- [ ] 5 — Grade tuning
+- [ ] 6 — Audio prep
+- [ ] 7 — Render and verify
+"""
 
 
 def tracked_files(root):
@@ -75,7 +82,7 @@ def main():
     root = Path(__file__).resolve().parent
     try:
         # Validate everything before deleting anything.
-        progress = fresh_progress(root)
+        progress = fresh_progress()
         targets = cleanup_targets(root, tracked_files(root))
         for path in targets:
             print(f"{'Would remove' if args.dry_run else 'Removing'} {path.relative_to(root)}")

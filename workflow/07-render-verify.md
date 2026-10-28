@@ -38,7 +38,7 @@ Record evidence and a verdict for each applicable requirement in `workdir/verifi
 - Verify the song follows one continuous range and is not inadvertently looped, spliced, or doubled. Check the entrance and closing fade occur once.
 - Verify music coverage using stem/processing evidence as well as the encoded mix. Cooking sounds or room tone must not disguise missing music. The intended fade can reach silence at the endpoint; there must be no preceding dead-air stretch caused by source fades or ducking.
 - Confirm selected cooking sounds are present at their planned output times, clear against the bed, with muted/omitted audio remaining absent. Verify the sync of claimed sound events against song beats within the chosen output frame's precision; do not treat cuts alone as proof of sound sync.
-- Listen when available. Otherwise use numerical evidence for timing, levels, continuity, and transients, explicitly separating it from unverified perceptual or semantic claims. Required vocal/noise or perceptual checks without adequate evidence need a user decision, not a fabricated pass.
+- Listen when available. Otherwise use numerical evidence for timing, levels, continuity, and transients, explicitly separating it from unverified perceptual or semantic claims. Required perceptual checks without adequate evidence need a user decision, not a fabricated pass.
 
 ## Rework and report
 
