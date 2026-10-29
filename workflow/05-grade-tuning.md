@@ -1,10 +1,10 @@
 # Step 5: Grade tuning
 
-Runs in the main agent with vision. Tune Kodak 2383 print film emulation to the footage, not a fixed strength. Work independently of step 4 on source moments selected by the plan; step 7 checks the final framed result.
+**Owner:** Grading subagent with vision, in parallel with step 4. Tune Kodak 2383 to planned source samples, not a fixed strength; step 6 checks the final framed result.
 
 ## Inputs
 
-- `workdir/inputs.json` and its source paths/color metadata
+- `workdir/progress.md` and saved source probes
 - `workdir/plan.json`
 - Reusable grade assets in `assets/` and any user-named assets
 - Existing `workdir/grade.json` and comparison evidence when resuming
@@ -18,9 +18,9 @@ Runs in the main agent with vision. Tune Kodak 2383 print film emulation to the 
 ## Actions
 
 1. Reuse valid grade choices and comparisons for unchanged sources/shots. Research the reference look only when uncertain and save useful findings with the result.
-2. Identify the actual LUT asset and its expected input color space. Use source metadata to establish any required conversion or correction before applying the creative look. Do not substitute a label change for a pixel conversion or assume every 2383 LUT accepts every camera source. If the needed asset or input interpretation is missing, resolve that instead of guessing.
-3. Select representative light, saturated, dark, and differing-source frames. Apply the look through supported skill operations and view before/after evidence. Tune based on the food, highlight detail, shadows, and consistency; revisit only failing shots.
-4. Record the asset path, input preparation, chosen strength, and any overrides as reproducible parameters. Discovered commands and run evidence belong in `workdir/`, not these instructions. Write `grade.json` for step 7.
+2. Identify the LUT and expected input color space. Use source metadata to resolve required pixel conversions or corrections; metadata relabeling is not conversion. Reuse applicable provenance and compatibility findings.
+3. Compare representative light, saturated, dark, and differing-source samples through supported skill operations before full-Reel rendering. Tune food color, detail, and consistency; revisit only failing shots. If strength behaves unexpectedly, inspect the generated command before further trials.
+4. Record asset, input preparation, intended strength, actual tool arguments/version, and overrides in `grade.json` for step 6. Keep comparison evidence and research in `workdir/`.
 
 ## Output contract
 

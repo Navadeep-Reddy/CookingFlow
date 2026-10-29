@@ -19,7 +19,7 @@ Turn user-selected clips and music into a 9:16 Reel.
 0 → [1 || 2] → 3 → [4 || 5] → 6
 
 - Steps 1 and 2 run as parallel subagents.
-- Steps 4 and 5 run as parallel subagents.
+- Steps 4 and 5 run as parallel subagents; grade source samples without waiting for framing or assembly.
 - Read each step's MD file before executing it.
 - Follow its inputs, instructions, and completion criteria.
 - Mark completed steps in `workdir/progress.md`.
@@ -28,6 +28,6 @@ Turn user-selected clips and music into a 9:16 Reel.
 ## Handoffs
 
 - Each step owns its output and validates it before completion.
-- Later steps reuse saved outputs instead of repeating analysis.
+- Resume from `workdir/progress.md`. Reuse outputs, probes, and frame evidence when inputs, parameters, and tool versions still match and outputs validate; rerun only affected work and dependents. Record these dependencies with each handoff.
 - Pass file paths to subagents, not large context summaries.
 - Subagents return brief summaries; detailed results stay in files.

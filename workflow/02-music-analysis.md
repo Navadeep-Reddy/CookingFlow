@@ -6,15 +6,15 @@
 
 ## Actions
 
-1. **Analyze the song:** Measure RMS energy in 1-second windows across the entire song. Identify strong energy increases by comparing the pooled mean-square energy of the 4 seconds before and after each point, converting the ratio to dB.
+1. **Analyze the song:** Run `python3 tools/music.py "Sounds/SONG"` (NumPy/SciPy required; `--help` for options). It caches skill-decoded PCM, pooled channel power, and spectral onsets; reports 1-second RMS and ranks 4-second energy rises: `10 log10(after / before)`.
 
 2. **Find the best high point:** Examine promising energy increases using 0.1-second windows to locate their precise onsets. Choose the strongest suitable musical high point with enough music remaining for the Reel.
 
 3. **Choose the starting point:** Set the music start approximately 1 second before the selected high point to create a short build-up. Adjust slightly for a natural musical entry.
 
-4. **Map the beats:** Analyze the selected 30-second section to estimate the beat interval. Determine the beat grid's starting position using detected audio onsets, then verify its alignment with the music across the section. Save the aligned beat timestamps on the original song timeline.
+4. **Map the beats:** Analyze onsets in the selected 30-second section; estimate beat period and phase, match grid positions to detected onsets, and verify alignment across the beginning, middle, and end. Save supported timestamps and alignment errors.
 
-5. **Save the result:** Verify the selected start and detected timestamps, then write `workdir/music.json`.
+5. **Save the result:** Review `workdir/music-analysis/analysis.json`; use `--high-point SECONDS` to refine selection with cached measurements. Only a validated run emits `music.json`; `--publish workdir/music.json` writes the handoff (`--overwrite` to replace). Numerical validation does not replace musical judgement.
 
 ## Output
 
@@ -25,7 +25,7 @@
 }
 ```
 
-- All timestamps are in seconds on the original song timeline.
+- All timestamps use the original song's decoded playable timeline; record any container-padding difference.
 - Include detected, supported beat positions in chronological order.
 - Step 3 uses the start and beat timestamps to plan the final edit.
 

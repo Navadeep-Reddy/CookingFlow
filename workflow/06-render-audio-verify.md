@@ -1,6 +1,6 @@
 # Step 6: Render, Audio Mix & Verify
 
-This step turns the saved editing, framing, and grading decisions into the final Reel, mixes the music with original cooking sounds, and checks the finished video.
+Render the saved edit, mix music with cooking sounds, and verify the finished Reel.
 
 ## Inputs
 
@@ -12,17 +12,17 @@ This step turns the saved editing, framing, and grading decisions into the final
 
 ## Actions
 
-1. **Check the plans:** Confirm that every planned shot has valid source times, framing, and grade settings. Check which shots have original audio. If all source audio is disabled despite available cooking sounds, review that decision before rendering.
+1. **Check the plans:** Validate every shot's source times, framing, grade, and audio policy. Review an all-muted source mix if useful cooking sounds are available.
 
-2. **Prepare the video edit:** Use the exact shot order, trims, speeds, and output timings from `plan.json`. Apply each shot's zoom and position from `framing.json` and colour settings from `grade.json`.
+2. **Prepare the video edit:** Apply `plan.json` with exact crops from `framing.json` and settings from `grade.json`. Use planned picture timing, not audio-padded container duration, for retiming. Minimize encoding passes through supported skill operations; reuse valid intermediates.
 
-3. **Prepare the audio mix:** Use one continuous section of music starting at `music.start` and lasting the full Reel. Place retained original audio at the matching shot times. Keep useful cooking sounds audible beneath the music, especially from normal-speed shots. Mute sped-up source audio when it would sound unnatural, and Use the continuous music section selected in plan.json, preserving its natural ending without adding a fade-out.
+3. **Prepare the audio mix:** Use one continuous section from `music.start` for the full Reel, without a music fade-out. Align retained cooking sounds to their shots and keep them audible beneath music, especially at normal speed. Mute unnatural sped-up audio; record per-shot gain/mute and source-edge fades.
 
-4. **Render the Reel:** Use the ffmpeg skill to render only the selected footage with video and audio together. Export `workdir/final.mp4` as a 1080×1920, 30 fps, H.264 video with AAC stereo audio.
+4. **Render the Reel:** Render only selected footage through the skill. Export `workdir/final.mp4`: 1080×1920, 30 fps, H.264, AAC stereo.
 
-5. **Inspect the result:** Run the skill's Reels checks. Inspect frames around shot transitions and a contact sheet of the final Reel for awkward cuts, missing actions, poor framing, and unnatural food colours. Check audio levels, clipping, music continuity, and whether retained cooking sounds are actually present in the mix.
+5. **Inspect the result:** Combine Reels, under-30-second, and content checks in the final QC pass. View a contact sheet and transition frames for awkward cuts, missing actions, framing, and food colors. Verify audio levels, clipping, music continuity, and retained cooking sounds. Distinguish signal checks from listening.
 
-6. **Finish and report:** Correct any failed checks and verify the result again. Save the findings to `workdir/verification.md` and deliver the verified `workdir/final.mp4`.
+6. **Finish and report:** Correct failures and rerun affected checks; reuse unchanged results. Save findings and limitations to `workdir/verification.md` and deliver verified `workdir/final.mp4`.
 
 ## Output
 
@@ -31,50 +31,8 @@ This step turns the saved editing, framing, and grading decisions into the final
 
 ## Done when
 
-- The Reel is vertical, Max resolution 9:16, 30 fps, and under 30 seconds.
+- The Reel is 1080×1920 (9:16), 30 fps, and under 30 seconds.
 - The shots follow `plan.json`, with framing and grading applied as saved.
 - The music plays continuously, and suitable original cooking sounds are included where available.
 - The rendered video passes Reels checks and its shot transitions, framing, colours, and audio have been checked.
 - `workdir/final.mp4` and `workdir/verification.md` are saved.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

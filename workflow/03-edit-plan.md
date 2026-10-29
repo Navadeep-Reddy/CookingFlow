@@ -1,6 +1,6 @@
 # Step 3: Edit plan
 
-This stage uses the completed footage and music analyses to plan the final Reel. It selects and arranges shots, determines their timing and playback speeds, and synchronizes them with the music. It saves the resulting edit plan for the final rendering stage.
+Select shots, order, timing, and speeds from the footage and music analyses; save the edit for rendering.
 
 ## Inputs
 
@@ -14,13 +14,13 @@ This stage uses the completed footage and music analyses to plan the final Reel.
 
 2. **Prepare music timing:** Use the starting point from `music.json` and convert its beat timestamps into positions relative to the Reel's beginning.
 
-3. **Select and arrange shots:** Choose the actions that best tell the story with total length being 30 seconds. Include atleast one shot of each distinct cooking stage so each transition shows meaningful visual progress.
+3. **Select and arrange shots:** Tell the story in under 30 seconds. Include at least one shot of each distinct cooking stage so transitions show meaningful progress.
 
 4. **Plan cuts and speeds:** Determine precise source ranges, shot durations, and playback speeds between 1.0× and 2.0×. Choose each shot's speed based on its action, keeping natural movements at 1.0× and speeding up slow or repetitive parts when useful. Vary shot lengths and cutting patterns to create natural, engaging pacing.
 
-5. **Finalize the timeline:** Prioritize visual storytelling and natural action flow over musical synchronization. Align cuts and significant moments with nearby beats when it improves the edit. Calculate consecutive output timestamps and the final duration. Retain original clip audio for mixing during rendering.
+5. **Finalize the timeline:** Prioritize storytelling and natural action flow. Use measured beats where alignment improves the edit, not accumulated rounded beat intervals. Accumulate integer output frames at 30 fps, then derive timestamps and duration. Retain original audio for mixing.
 
-6. **Save the plan:** Inspect frames around selected shot boundaries to ensure transitions look natural and actions progress clearly. Verify timestamps and total duration under 30 seconds. Write `workdir/plan.json`.
+6. **Save the plan:** Review boundary frames for natural transitions, reusing evidence. Validate source-window containment, speed/duration arithmetic, consecutive timing, stage coverage, and duration under 30 seconds. Write `workdir/plan.json`.
 
 ## Output
 
@@ -49,7 +49,7 @@ Write `workdir/plan.json`:
 }
 ```
 
-All timestamps are in seconds. Use one shot entry per continuous source range.
+Timestamps are seconds; source ranges are half-open `[src_in, src_out)`. Use one shot per continuous range.
 
 ## Done when
 
