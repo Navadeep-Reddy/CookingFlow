@@ -14,7 +14,7 @@ Render the saved edit, mix music with cooking sounds, and verify the finished Re
 
 1. **Check the plans:** Validate every shot's source times, framing, grade, and audio policy. Review an all-muted source mix if useful cooking sounds are available.
 
-2. **Prepare execution:** Check `python3 tools/render_edit.py --help` against the required output. The runner applies saved trims/crops/speeds/grade, checks frame counts and LUT semantics, avoids redundant resizing, and reuses validated stages. It currently exports only 1080×1920; when the required resolution or input handling exceeds its support, use supported skill projects/operations with explicit settings. See [execution details](../tools/README.md#saved-edit-rendering).
+2. **Prepare execution:** Check `python3 tools/render_edit.py --help` against the required output. The runner applies saved trims/crops/speeds/grade, checks frame counts and LUT semantics, avoids redundant resizing, and reuses validated stages. Export at max source 9:16 resolution, using the largest common source-crop dimensions without upscaling; resolve unsupported input handling through supported skill operations. See [execution details](../tools/README.md#saved-edit-rendering).
 
 3. **Prepare the audio mix:** Use one continuous section from `music.start` for the full Reel, without a music fade-out. Align retained cooking sounds to their shots and keep them audible beneath music, especially at normal speed. Mute unnatural sped-up audio; write explicit per-shot gain/mute/source-edge fades and music/mix levels to `workdir/audio-policy.json` using the runner's documented schema.
 
@@ -33,7 +33,7 @@ When investigating execution performance, use `python3 tools/benchmark_render.py
 
 ## Done when
 
-- The Reel is Max possible 9:16 resolution, 30 fps, and under 30 seconds.
+- The Reel is max source 9:16 resolution, 30 fps, and under 30 seconds.
 - The shots follow `plan.json`, with framing and grading applied as saved.
 - The music plays continuously, and suitable original cooking sounds are included where available.
 - The rendered video passes Reels checks and its shot transitions, framing, colours, and audio have been checked.

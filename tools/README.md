@@ -45,11 +45,11 @@ Explicit audio policy, keyed by every shot ID:
 Values above illustrate the schema, not mandatory mix levels. Decide gains/mutes for the actual footage; `keep_original_audio: false` or `mute: true` silences that shot. Ending music/mix fades are refused. `--audio-evidence` uses NumPy/SciPy and currently requires stereo, independently measurable non-silent cooking/music stems; omit it for an intentionally music-only edit and document that policy.
 
 The helper:
-- Validates integer frame timing, speed arithmetic, bounds, crop geometry and actual encoded frame counts.
+- Validates integer frame timing, speed arithmetic, bounds, crop geometry and actual encoded frame counts; uses max source 9:16 resolution, the largest common source-crop dimensions without upscaling.
 - Uses accurate cuts and exact pixel crops through the installed skill.
 - Combines speed/resize in `fit.py` when retiming is needed. Normal-speed, 30-fps shots defer resizing to the already-required join encode.
 - Compensates `fit.py`'s container-duration-based calculation so planned speed is not changed by AAC tails; refuses unexpected frame counts.
-- Applies the approved LUT, continuous music, Reels export and a combined under-30-second/content/platform check.
+- Applies the approved LUT, continuous music, Reels export with source-derived resolution preserved (`--no-scale`) and a combined under-30-second/content/platform check.
 - Optionally verifies both audio stems with sample-rate-aware, both-channel regression and a bounded offset search. This does not establish perceptual balance or replace listening.
 - Stores source/tool/parameter dependencies, output SHA-256, verified probes, dry runs, commands, stage times and cache hits/misses. Changed/missing/corrupt artifacts invalidate affected work.
 

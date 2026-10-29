@@ -6,7 +6,7 @@
 
 --validate-only compiles/checks decisions without rendering. --mode baseline
 reproduces the old cut/crop/fit-per-shot structure for controlled benchmarks;
-optimized defers normal-speed resizing to join and preserves planned speed.
+optimized defers normal-speed resizing to join, preserves planned speed, and uses max source 9:16 resolution without upscaling.
 This is NOT a fused trim/crop/resize encoder: the installed skill exposes no such
 operation. No raw FFmpeg, skill modifications, implicit beat snapping, or source
 cut detection. Default report: workdir/render-edit/manifest.json; output paths
@@ -142,7 +142,7 @@ def compile_plan(plan, framing, policy, probes, footage=None):
     if footage and used_stages != {s["name"] for s in footage["stages"]}:
         raise ValueError("The plan does not cover every cooking stage")
     return dict(shots=result, music=plan["music"], duration=cursor / 30,
-                total_frames=cursor, source_dependencies=list(probes))
+                total_frames=cursor, source_dependencies=list(probes), frame={k: min(s["crop"][k] for s in result) for k in ("width", "height")})
 
 
 def lut_flag(strength, commands):
@@ -298,7 +298,7 @@ def run_edit(engine, compiled, grade, policy, mode):
         return engine.step(label, "color", [source, "--lut", lut, "--lut-strength", flag,
                            "--quality", 18, "--preset", "superfast"], [source, lut], expected=expected)[0]
 
-    global_grade = {k: grade[k] for k in ("lut_path", "strength")}
+    frame, global_grade = compiled["frame"], {k: grade[k] for k in ("lut_path", "strength")}
     for shot in compiled["shots"]:
         sid = shot["id"]
         source = engine.source(shot["clip"])
@@ -318,10 +318,10 @@ def run_edit(engine, compiled, grade, policy, mode):
             # so setpts/atempo use the planned speed, not an AAC-tail-derived speed.
             duration = ((shot["out_end"] - shot["out_start"]) if mode == "baseline"
                         else float(doc["probe"]["duration"]) / shot["speed"])
-            part, fit = engine.step(f"{sid}-fit", "fit", [crop, "--width", 1080, "--height", 1920,
+            part, fit = engine.step(f"{sid}-fit", "fit", [crop, "--width", frame["width"], "--height", frame["height"],
                                      "--fps", 30, "--duration", duration, "--quality", 18,
                                      "--preset", "superfast"], [crop], expected=expected | {
-                                         "width": 1080, "height": 1920})
+                                         **frame})
             if mode != "baseline" and shot["keep_original_audio"] and not shot["audio"]["mute"]:
                 match = re.search(r"atempo=([\d.]+)", "\n".join(fit["commands"]))
                 if match and abs(float(match[1]) - shot["speed"]) > 1e-6:
@@ -333,18 +333,18 @@ def run_edit(engine, compiled, grade, policy, mode):
         if override_map:
             part = apply_grade(f"{sid}-grade", part, global_grade | override_map.get(sid, {}), expected)
         parts.append(part)
-    total = dict(width=1080, height=1920, fps=30, nb_frames=compiled["total_frames"])
+    total = dict(**frame, fps=30, nb_frames=compiled["total_frames"])
     assembled, _ = engine.render_project("assembly", dict(clips=[dict(src=str(p)) for p in parts],
-                                          frame=dict(width=1080, height=1920, fps=30),
+                                          frame=dict(**frame, fps=30),
                                           transition=dict(type="none", duration=0)), parts, total)
     graded = assembled if override_map else apply_grade("grade", assembled, global_grade, total)
     song = engine.source(compiled["music"]["file"])
     bed, _ = engine.step("music-section", "cut", [song, "--start", compiled["music"]["start"],
                          "--duration", compiled["duration"], "--accurate"], [song], suffix=".wav")
-    final, final_doc = engine.render_project("delivery", dict(clips=[dict(src=str(graded))],
+    mixed, _ = engine.render_project("mix", dict(clips=[dict(src=str(graded))],
         audio=dict(music=str(bed), music_volume=policy["music_gain_db"],
-                   music_fade_out=0, fade_in=policy.get("mix_fade_in", 0), fade_out=0, stereo=True),
-        export=dict(preset="reels", normalize=True)), [graded, bed], total | {"delivery": True})
+                   music_fade_out=0, fade_in=policy.get("mix_fade_in", 0), fade_out=0, stereo=True)), [graded, bed], total)
+    final, final_doc = engine.step("delivery", "export", [mixed, "--preset", "reels", "--no-scale", "--normalize"], [mixed], expected=total | {"delivery": True})
     check = engine.check(final)
     return dict(final=str(final), probe=final_doc["probe"], cooking_stem=str(assembled),
                 music_stem=str(bed), check=check, lut_compatibility=compat)

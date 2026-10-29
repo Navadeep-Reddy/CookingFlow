@@ -35,8 +35,7 @@ def fresh_progress():
 - [ ] 3 — Edit plan
 - [ ] 4 — Framing
 - [ ] 5 — Grade tuning
-- [ ] 6 — Audio prep
-- [ ] 7 — Render and verify
+- [ ] 6 — Render, audio mix and verify
 """
 
 

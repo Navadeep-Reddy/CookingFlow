@@ -16,10 +16,10 @@ class PlanTests(unittest.TestCase):
                                     speed=1.25, out_start=0., out_end=1.6,
                                     keep_original_audio=True, moment_id="m")],
                          music=dict(file="song.mp3", start=3.), duration=1.6)
-        self.framing = dict(shots=[dict(id="a", crop=dict(x=0, y=0, width=1080, height=1920))])
+        self.framing = dict(shots=[dict(id="a", crop=dict(x=0, y=0, width=2160, height=3840))])
         self.policy = dict(shots=dict(a=dict(gain_db=-5, mute=False, fade_in=.02, fade_out=.025)),
                            music_gain_db=-3)
-        self.probes = {"source.mp4": dict(duration=100, video=dict(width=1080, height=1920,
+        self.probes = {"source.mp4": dict(duration=100, video=dict(width=2160, height=3840,
             fps=30, r_frame_rate="30/1", duration=100), audio=dict(channels=2))}
 
     def compile(self):
@@ -27,7 +27,7 @@ class PlanTests(unittest.TestCase):
 
     def test_frame_arithmetic_and_crop_compilation(self):
         result = self.compile()
-        self.assertEqual(result["total_frames"], 48)
+        self.assertEqual((result["total_frames"], result["frame"]), (48, dict(width=2160, height=3840)))
         self.assertEqual(result["shots"][0]["source_frames"], 60)
         self.assertEqual(result["shots"][0]["crop"], self.framing["shots"][0]["crop"])
         self.assertEqual(r.frame_index(1001 / 30000, Fraction(30000, 1001)), 1)
@@ -84,7 +84,7 @@ class FakeRunner(r.Runner):
         if "--dry-run" not in args:
             Path(args[args.index("-o") + 1]).write_bytes(b"owned media output")
         return dict(verified=True, commands=["fake skill command"],
-                    probe=dict(video=dict(width=1080, height=1920, nb_frames=30, fps=30)))
+                    probe=dict(video=dict(width=2160, height=3840, nb_frames=30, fps=30)))
 
 
 class CacheTests(unittest.TestCase):
