@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Private setup kit so OpenCode can edit Instagram Reels (cooking content) in a specific style. No application code: configuration, step files, and an ffmpeg skill.
+Complete the entire assigned task and all required checks. Keep working until the requested deliverable is finished and verified. When difficulties arise, investigate, try available alternatives, and continue from saved progress. Avoid premature termination and exhaust all reasonable ways to complete the task before reporting any unresolved limitations.
 
 ## Repo map
 
