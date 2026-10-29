@@ -12,7 +12,7 @@
 
 3. **Choose the starting point:** Set the music start approximately 1 second before the selected high point to create a short build-up. Adjust slightly for a natural musical entry.
 
-4. **Map the beats:** Analyze onsets in the selected 30-second section; estimate beat period and phase, match grid positions to detected onsets, and verify alignment across the beginning, middle, and end. Save supported timestamps and alignment errors.
+4. **Map the beats:** Review the helper's selected-section beat fit, detected-onset matches, alignment errors, prominent accents, and beginning/middle/end coverage in `analysis.json`. Refine the section with cached measurements when needed; retain supported timestamps rather than inventing a grid.
 
 5. **Save the result:** Review `workdir/music-analysis/analysis.json`; use `--high-point SECONDS` to refine selection with cached measurements. Only a validated run emits `music.json`; `--publish workdir/music.json` writes the handoff (`--overwrite` to replace). Numerical validation does not replace musical judgement.
 

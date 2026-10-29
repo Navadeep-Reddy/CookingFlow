@@ -20,7 +20,7 @@ Select shots, order, timing, and speeds from the footage and music analyses; sav
 
 5. **Finalize the timeline:** Prioritize storytelling and natural action flow. Use measured beats where alignment improves the edit, not accumulated rounded beat intervals. Accumulate integer output frames at 30 fps, then derive timestamps and duration. Retain original audio for mixing.
 
-6. **Save the plan:** Review boundary frames for natural transitions, reusing evidence. Validate source-window containment, speed/duration arithmetic, consecutive timing, stage coverage, and duration under 30 seconds. Write `workdir/plan.json`.
+6. **Save the plan:** Save a draft `workdir/plan.json`, then use `python3 tools/evidence.py shots workdir/plan.json` (`--help` for options) to obtain cached first/middle/last source frames for each shot. Review natural action boundaries and transitions; revise as needed. Validate source-window containment, speed/duration arithmetic, consecutive timing, stage coverage, and duration under 30 seconds before finalizing.
 
 ## Output
 

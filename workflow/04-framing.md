@@ -10,11 +10,11 @@ Choose each shot's **zoom and position** to center the cooking subject and fill 
 
 ## Actions
 
-1. Reuse time-aligned frames of each shot's first, middle, and last included positions. Inspect the first excluded frame when a boundary is uncertain; use source-resolution detail when needed.
+1. Use `python3 tools/evidence.py shots workdir/plan.json` (`--help` for options) for cached first/middle/last included source frames and their frame-index/time manifest. Add `--include-outside` for uncertain boundaries when that frame is before EOF; increase `--width` for source-resolution detail.
 2. Identify what the viewer should focus on, such as the food, pan, or active area of the cutting board.
 3. Choose a tight **9:16 "Fill the Frame"** zoom that makes the subject occupy most of the frame and removes unnecessary surroundings. Include hands and utensils when they contribute to the action, showing only as much as needed.
 4. Position the crop to center the subject and leave enough room for important movements, such as pouring, chopping, or lifting food.
-5. Check the crop across sampled frames. Map preview coordinates to the upright source; save zoom, center, and an even-pixel, in-bounds 9:16 rectangle in `workdir/framing.json`.
+5. Map preview coordinates to the upright source; record every shot's trial zoom, center, and even-pixel, in-bounds 9:16 rectangle in `workdir/framing.json`. Add `--framing workdir/framing.json` to the `shots` command for original/crop views using the same cached PNGs. Crops are HTML/browser views; use skill-generated crop previews if browser pixels cannot be inspected. Refine and save after visual review.
 
 ## Output
 

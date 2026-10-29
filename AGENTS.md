@@ -5,7 +5,7 @@ Complete the entire assigned task and all required checks. Keep working until th
 ## Repo map
 
 - `workflow/` - the editing procedure, one file per step. Start at `workflow/00-index.md`.
-- `tools/` - reusable workflow helpers; `python3 tools/evidence.py --help` for cached visual evidence.
+- `tools/` - reusable workflow helpers, introduced in the relevant step files.
 - `workdir/` - generated state between steps (JSON, WAV, renders). Gitignored. Never commit.
 - `.claude/skills/ffmpeg-skill/` - media execution toolkit. Read its `SKILL.md` before any video task; keep the installed skill unchanged.
 - `.opencode/agent/` - subagent definitions. `.opencode/commands/ffmpeg-skill.md` forwards `$ARGUMENTS` to the skill.
@@ -22,6 +22,6 @@ Apply the global rules below throughout the edit.
 
 - **Format:** every deliverable is an Instagram Reel, 9:16 vertical, final video under 30 seconds.
 - **Verify, don't assume:** consult saved research and version-specific findings first. Research unresolved questions, save useful findings, and verify locally with the skill.
-- **Execution:** use only the skill's scripts for media probing, decoding, extraction, and transformation. Check current `--help` once per needed script/version and input compatibility; reuse supported methods rather than rebuilding them.
+- **Execution:** media probing, decoding, extraction, and transformation must use the skill's scripts, directly or through workflow helpers. Check current `--help` once per needed script/version and input compatibility; reuse supported methods rather than rebuilding them.
 - **Source safety:** never overwrite source files. Put generated files and scratch work in `workdir/`, not beside source media.
 - **Style is fixed:** the channel's style rules live in the step files. The user should never have to repeat them in a prompt. If a step file and a user prompt conflict, the user's prompt for this specific edit wins; say so.
