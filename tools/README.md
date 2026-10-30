@@ -11,6 +11,17 @@ python3 tools/evidence.py cuts workdir/final.mp4 --plan workdir/plan.json
 
 Shared PNG cache, native survey sheets, and HTML crop views. HTML crops are browser views, not baked PNG crops. `cuts` inspects **planned output transitions**, not source-cut detection. View the PNG evidence before approving.
 
+Surveys default to **360 pixels per tile**, independent of column count. `--tile-width` controls this explicitly; legacy `--width` still means total survey width (or individual-frame width in other modes). The manifest reports tile width and nominal sample spacing; tiny explicitly requested tiles carry a readability note. An overview is orientation evidence, not exhaustive action coverage. Successes and failures are appended to `runs.jsonl`.
+
+## Grade previews
+
+```bash
+python3 tools/grade_preview.py "Clips/example.mp4" --start 12 --duration 2 \
+  --lut assets/luts/look.cube --strength 0 --strength .05 --strength .15
+```
+
+Uses the same `Runner.apply_grade` path as the final render. Strength always means intended LUT contribution; dry-run graph inspection resolves the installed script's actual flag before trials. Zero reuses the original sample. The manifest names cached videos and comparison PNGs and records intended contribution, executed flag, source/LUT identities, output hashes and commands. Review the PNGs and keep the selected preview manifest with grade evidence. Shared caching reuses cuts across trials; failed attempts are preserved. Prepared SDR/CFR sources and frame-aligned sample bounds are required.
+
 ## Music
 
 ```bash
@@ -28,7 +39,7 @@ python3 tools/render_edit.py workdir/plan.json \
   --audio-evidence
 ```
 
-`--validate-only` checks the source timeline, exact crops, audio policy, and optional selected-moment/stage coverage before encoding. Sources must be prepared SDR/CFR; technical colour conversions are not inferred. Rendering checks complete grade decisions and version-specific LUT blend semantics. Overrides accept `lut_path`/`strength`; unsupported corrections are refused.
+`--validate-only` checks grade schema/assets/overrides as well as the source timeline, exact crops, audio policy, and optional selected-moment/stage coverage before encoding. Sources must be prepared SDR/CFR; technical colour conversions are not inferred. Grade `operations`/`corrections` must be lists (`[]` for none); pending operations are refused. Overrides accept only `lut_path`/`strength`. Rendering and previews share version-specific LUT blend semantics.
 
 Explicit audio policy, keyed by every shot ID:
 
@@ -52,8 +63,9 @@ The helper:
 - Applies the approved LUT, continuous music, Reels export with source-derived resolution preserved (`--no-scale`) and a combined under-30-second/content/platform check.
 - Optionally verifies both audio stems with sample-rate-aware, both-channel regression and a bounded offset search. This does not establish perceptual balance or replace listening.
 - Stores source/tool/parameter dependencies, output SHA-256, verified probes, dry runs, commands, stage times and cache hits/misses. Changed/missing/corrupt artifacts invalidate affected work.
+- Retains a picture export whose sole verification gap is loudness as an intermediate, then performs audio-only recovery with video stream-copy and peak headroom. Strict post-recovery loudness and final platform checks still gate delivery. Other verification failures are refused; retries reuse the picture encode.
 
-`workdir/render-edit/manifest.json` names the content-addressed final MP4 and checks; `runs.jsonl` preserves timing history. Cache hits reuse saved probes only when output hashes still match. Outputs do not replace an existing `workdir/final.mp4`. After picture/editorial review, use skill `export.py --preset copy` to publish to the desired unused delivery path. A mechanical pass leaves editorial review pending; view survey/boundary PNGs through `evidence.py` and record the review.
+`workdir/render-edit/manifest.json` names the content-addressed final MP4 and checks; `runs.jsonl` preserves successes and failures, elapsed times and failed-stage/command details. Cache hits reuse saved probes only when output hashes still match. Outputs do not replace an existing `workdir/final.mp4`. After picture/editorial review, use skill `export.py --preset copy` to publish to the desired unused delivery path. A mechanical pass leaves editorial review pending; view survey/boundary PNGs through `evidence.py` and record the review.
 
 **Supported limit:** the installed skill has no combined trim + arbitrary exact crop + resize operation, or per-clip crop/LUT project fields. Full fusion would require a separately approved supported-tool extension. Lossless `cut.py --edit-list` was investigated; a non-keyframe test ran past the requested end and fell back to encoding. It is not assumed frame-exact here. No raw FFmpeg bypass or installed-skill changes are used.
 

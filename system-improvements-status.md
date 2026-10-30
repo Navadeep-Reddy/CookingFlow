@@ -11,10 +11,22 @@
 - `tools/evidence.py`: shared cached probes/PNG samples, native survey sheets, shot samples and adjacent output-transition frames. Crop views are HTML/browser views, not baked PNG crops; inspect actual pixels through supported previews when needed.
 - `tools/music.py`: cached skill-decoded PCM, pooled energy/onset features, high-point candidates, supported beat fits and the existing two-field music handoff. Tested on all four songs in `Sounds/`; the original song exactly reproduced the previous handoff.
 - `tools/render_edit.py`: frame/crop/audio-policy validation, skill-backed execution, version-aware LUT blend handling, hash-validated stage reuse, execution ledgers, final technical checks and optional numerical two-stem evidence.
+- `tools/grade_preview.py`: cached source-sample trials through the renderer's shared LUT implementation; manifests record intended contribution, actual flag, identities, commands, hashes, videos and PNGs.
 - `tools/benchmark_render.py`: isolated baseline/optimized render comparison and unchanged cached repeat, timed from saved creative decisions.
 - Usage contracts: helper `--help` and `tools/README.md`. Music and optional audio regression require NumPy/SciPy (`tools/requirements-music.txt`).
 
-## Latest resolution policy and verification
+## Tool hardening after the rejected test
+
+- Surveys now default to 360 pixels per tile; `--tile-width` controls readability, while explicit legacy `--width` remains supported. Manifests record effective grid/tile width and nominal spacing.
+- Grade schema, assets and all overrides are validated before media processing, including `--validate-only`; no-op preparation uses lists (`[]`). Preview and final strength mapping share one implementation. Step 5 points to the preview helper in place.
+- Evidence, music, preview and render ledgers preserve failed attempts and elapsed times; render failures include failed-stage details, and command timeouts are recorded.
+- A picture export with only a loudness-verification gap is retained as an intermediate; audio-only repair stream-copies video, adds peak headroom and must meet strict limits before final checks.
+- **45 automated tests passed**, plus real-skill preview/survey/recovery and end-to-end render checks. Unchanged preview, recovery and full-render repeats made zero media-skill calls.
+- The two-shot mechanical fixture includes 1.25× retiming: **2160×3840, 30 fps, 27 frames, 0.917 s container / 0.9 s picture, H.264/AAC stereo**; technical checks passed, with only optional-subtitles WARN. This tests execution, not story quality.
+- Recovery was exercised with an explicitly injected export-metadata gap and real media operations: **1548×2752, 60 frames, 2.005 s, −14.38 LUFS / −1.41 dBTP**. Executed recovery commands stream-copy video; output passed platform/content checks. Preview and output-survey PNGs were viewed.
+- Detailed generated evidence: `workdir/tool-fixes/verification.json`, `grade-preview/manifest.json`, and `full-render/manifest.json`; reset removes these, so the findings above are preserved here.
+
+## Resolution policy and earlier full-edit verification
 
 - No fixed delivery-resolution cap. The renderer derives the largest common 9:16 dimensions available from the selected source crops, without upscaling; the tightest crop determines the common native output size.
 - Fit and join use those dimensions; Reels export uses `--no-scale` to preserve them.

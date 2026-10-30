@@ -1,8 +1,12 @@
 import copy
+from contextlib import redirect_stderr
 from fractions import Fraction
+import io
+import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 try:
     from . import render_edit as r
@@ -126,6 +130,95 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(len(e.commands), 2)
         with self.assertRaises(ValueError):
             r.validate_probe(dict(video=dict(nb_frames=31)), dict(nb_frames=30))
+
+    def test_grade_schema_rejected_by_validate_only_before_media_work(self):
+        for name, value in (("plan", {"shots": [{"id": "a"}]}), ("framing", {}),
+                            ("policy", {}), ("grade", dict(status="complete", lut_path="look.cube",
+                             strength=.05, input_preparation={"source": {"operations": "none"}}))):
+            (self.root / f"{name}.json").write_text(json.dumps(value))
+        for _ in range(2):
+            with patch.object(r.Runner, "probe", side_effect=AssertionError("must fail before probe")), redirect_stderr(io.StringIO()):
+                code = r.main(["plan.json", "--framing", "framing.json", "--grade", "grade.json",
+                               "--audio-policy", "policy.json", "--root", str(self.root), "--validate-only"])
+            self.assertEqual(code, 1)
+        directory = self.root / "workdir/render-edit"
+        runs = [json.loads(line) for line in (directory / "runs.jsonl").read_text().splitlines()]
+        self.assertEqual(len(runs), 2)
+        self.assertTrue(all(run["status"] == "failed" and "elapsed_seconds" in run for run in runs))
+        self.assertIn("use [] for none", runs[-1]["error"])
+
+    def test_grade_validation_catches_late_override_errors(self):
+        (self.root / "look.cube").write_text("fake LUT")
+        grade = dict(status="complete", lut_path="look.cube", strength=.05)
+        engine = FakeRunner(self.root)
+        r.validate_grade(grade, ["a"], engine)
+        for override in ({"strength": 1.5}, {"strength": float("nan")}, {"strength": "0.05"},
+                         {"gamma": 1.2}, "none"):
+            with self.subTest(override=override), self.assertRaises((ValueError, TypeError)):
+                r.validate_grade(grade | {"per_shot_overrides": {"a": override}}, ["a"], engine)
+        with self.assertRaises(OSError):
+            r.validate_grade(grade | {"lut_path": "missing.cube"}, ["a"], engine)
+        self.assertEqual(engine.commands, [])
+
+    def test_failed_stage_records_attempt_and_duration(self):
+        engine = FakeRunner(self.root)
+        with patch.object(engine, "tool", side_effect=ValueError("encoder failed")):
+            with self.assertRaisesRegex(ValueError, "encoder failed"):
+                self.stage(engine)
+        failure = engine.steps[-1]
+        self.assertEqual((failure["status"], failure["label"]), ("failed", "shot"))
+        self.assertGreaterEqual(failure["seconds"], 0)
+        self.assertIn("--gain", failure["arguments"])
+        self.assertEqual(list(engine.cache.glob("*.result.json")), [])
+
+    def test_shared_grade_path_records_actual_flag_and_endpoints(self):
+        class GradeRunner(FakeRunner):
+            def tool(self, name, args):
+                result = super().tool(name, args)
+                result["commands"] = ["[o][g2]blend=all_mode=normal:all_opacity=0.5"]
+                return result
+        engine = GradeRunner(self.root)
+        source = self.root / "source.mp4"
+        (self.root / "look.cube").write_text("fake LUT")
+        settings = dict(lut_path="look.cube", strength=0)
+        self.assertEqual(engine.apply_grade("zero", source, settings, {}), source)
+        self.assertEqual(engine.commands, [])
+        for strength, flag in ((.05, .95), (1, 1)):
+            engine.apply_grade("trial", source, settings | {"strength": strength}, dict(nb_frames=30))
+            self.assertAlmostEqual(engine.steps[-1]["executed_lut_flag"], flag)
+            self.assertEqual(engine.steps[-1]["intended_lut_contribution"], strength)
+        again = GradeRunner(self.root)
+        again.apply_grade("final", source, settings | {"strength": .05}, dict(nb_frames=30))
+        self.assertEqual(again.commands, [])
+
+    def test_audio_recovery_reuses_picture_and_stays_strict(self):
+        class RecoveryRunner(FakeRunner):
+            def tool(self, name, args):
+                result = super().tool(name, args)
+                if name == "export":
+                    result.update(status="completed", verified=False,
+                                  verification=[dict(step="probe", ok=True), dict(step="loudness", ok=False)],
+                                  loudness=dict(tp=-.98, lufs=-14))
+                else:
+                    result["result"] = dict(input_tp="-1.40", input_i="-14.10")
+                return result
+        expected = dict(nb_frames=30)
+        engine = RecoveryRunner(self.root)
+        result, doc = engine.delivery(self.root / "source.mp4", expected)
+        self.assertTrue(doc["verified"])
+        self.assertEqual([s["tool"] for s in engine.steps], ["export", "loudness"])
+        again = RecoveryRunner(self.root)
+        self.assertEqual(again.delivery(self.root / "source.mp4", expected)[0], result)
+        self.assertEqual(again.commands, [])
+        self.assertTrue(all(s["cache"] == "hit" for s in again.steps))
+        bad = dict(status="completed", verification=[dict(step="probe", ok=False),
+                   dict(step="loudness", ok=False)], loudness=dict(tp=-.98, lufs=-14))
+        self.assertFalse(r.loudness_only_gap(bad))
+        # An audio-only pass that still overshoots must never become a delivery.
+        with patch.object(again, "step", side_effect=[(result, dict(loudness=dict(tp=-.98, lufs=-14))),
+                                                     (result, dict(result=dict(input_tp="-.98", input_i="-14")))]):
+            with self.assertRaisesRegex(ValueError, "strict delivery"):
+                again.delivery(self.root / "source.mp4", expected)
 
 
 if __name__ == "__main__":

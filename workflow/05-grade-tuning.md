@@ -19,7 +19,7 @@
 
 1. Reuse valid grade choices and comparisons for unchanged sources/shots. Research the reference look only when uncertain and save useful findings with the result.
 2. Identify the LUT and expected input color space. Use source metadata to resolve required pixel conversions or corrections; metadata relabeling is not conversion. Reuse applicable provenance and compatibility findings.
-3. Inspect representative light, saturated, dark, and differing-source frames with `python3 tools/evidence.py frames CLIP --at SECONDS` (repeat `--at`; `--help` for options); it caches source PNGs and their times. Grade short samples through the skill and compare before/after before full-Reel rendering. Tune food color, detail, and consistency; revisit only failing shots. If strength behaves unexpectedly, inspect the generated command before further trials.
+3. Inspect representative light, saturated, dark, and differing-source frames with `python3 tools/evidence.py frames CLIP --at SECONDS`; it caches source PNGs and their times. Use `python3 tools/grade_preview.py CLIP --lut LUT --start SECONDS --strength VALUE` for short skill-backed trials (`--help` for options). It shares final-render strength mapping and records actual flags, commands, and comparison PNGs. Compare before/after, tune food color/detail/consistency, and revisit only failing shots.
 4. Record asset, input preparation, intended strength, actual tool arguments/version, and overrides in `grade.json` for step 6. Keep comparison evidence and research in `workdir/`.
 
 ## Output contract
@@ -40,7 +40,7 @@
 }
 ```
 
-`input_preparation` is keyed by clip ID and records its color-space assumptions and any ordered conversion/correction parameters; state explicitly when none are needed. Overrides are keyed by shot ID and inherit unchanged default parameters. Evidence identifies source frames and final-setting comparisons. Extra research and run notes are free-form.
+`input_preparation` is keyed by clip ID and records its color-space assumptions and ordered conversion/correction parameters; use lists for `operations`/`corrections`, explicitly `[]` when none are needed. Overrides are keyed by shot ID and inherit unchanged default parameters. Evidence identifies source frames and final-setting preview manifests. Extra research and run notes are free-form.
 
 ## Done when
 

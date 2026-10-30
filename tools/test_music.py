@@ -215,6 +215,15 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(self.run_main("--publish", "song.mp3", "--overwrite"), 1)
         self.assertEqual(self.run_main("--publish", "workdir/music-analysis/analysis.json"), 1)
 
+    def test_failed_attempts_are_appended_with_timing(self):
+        with patch.object(music, "analyze", side_effect=ValueError("analysis failed")):
+            self.assertEqual(self.run_main(), 1)
+            self.assertEqual(self.run_main(), 1)
+        runs = (self.root / "workdir/music-analysis/runs.jsonl").read_text().splitlines()
+        self.assertEqual(len(runs), 2)
+        self.assertTrue(all(json.loads(line)["status"] == "failed" for line in runs))
+        self.assertTrue(all("elapsed_seconds" in json.loads(line) for line in runs))
+
 
 if __name__ == "__main__":
     unittest.main()

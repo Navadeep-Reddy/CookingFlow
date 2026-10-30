@@ -4,12 +4,13 @@ Tests use a fake skill backend; real-media smoke checks use evidence.py itself.
 """
 import argparse
 import base64
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from fractions import Fraction
 import io
 import json
 from pathlib import Path
 import tempfile
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -41,7 +42,7 @@ class FakeEvidence(Evidence):
         times = [args[i + 1] for i, arg in enumerate(args) if arg == "--at"]
         output = Path(args[args.index("-o") + 1])
         outputs = []
-        for time in times:
+        for time in times or ["sheet"]:
             path = output.with_name(f"frame_{time}s.png") if len(times) > 1 else output
             path.write_bytes(PNG)
             outputs.append(str(path))
@@ -190,6 +191,52 @@ class EvidenceTests(unittest.TestCase):
         args = argparse.Namespace(mode="cuts", input=str(self.source), plan=str(plan), width=540)
         items = build_items(args, self.engine)
         self.assertEqual([x["frame_index"] for x in items], [59, 60])
+
+    def test_survey_defaults_to_readable_tiles_and_retains_explicit_width(self):
+        for extra, expected in (([], 2160), (["--tile-width", "480"], 2880), (["--width", "540"], 540)):
+            with patch("evidence.Evidence", FakeEvidence), redirect_stdout(io.StringIO()):
+                code = main(["survey", "clip.mp4", "--tiles", "6x4", "--root", str(self.root), *extra])
+            self.assertEqual(code, 0)
+            manifest = json.loads((self.root / "workdir/evidence/survey/manifest.json").read_text())
+            self.assertEqual(manifest["parameters"]["width"], expected)
+            self.assertEqual(manifest["items"][0]["tile_width"], expected // 6)
+            self.assertEqual(manifest["items"][0]["sample_interval_seconds"], .5)
+
+    def test_failed_evidence_attempt_is_preserved(self):
+        for _ in range(2):
+            with patch("evidence.Evidence", FakeEvidence), redirect_stderr(io.StringIO()):
+                code = main(["frames", "clip.mp4", "--at", "99", "--root", str(self.root)])
+            self.assertEqual(code, 1)
+        runs = (self.root / "workdir/evidence/frames/runs.jsonl").read_text().splitlines()
+        self.assertEqual(len(runs), 2)
+        self.assertTrue(all(json.loads(line)["status"] == "failed" for line in runs))
+
+    def test_short_survey_reports_effective_grid(self):
+        class ShortEvidence(FakeEvidence):
+            def tool(self, name, args):
+                result = super().tool(name, args)
+                if name == "probe":
+                    result["duration"] = .1
+                return result
+        with patch("evidence.Evidence", ShortEvidence), redirect_stdout(io.StringIO()):
+            self.assertEqual(main(["survey", "clip.mp4", "--tiles", "6x4", "--root", str(self.root)]), 0)
+        manifest = json.loads((self.root / "workdir/evidence/survey/manifest.json").read_text())
+        self.assertEqual(manifest["items"][0]["label"], "3x1")
+        self.assertEqual(manifest["parameters"]["width"], 1080)
+
+    def test_timeout_keeps_command_and_elapsed_record(self):
+        engine = Evidence(self.root, self.cache)
+        with patch("evidence.subprocess.run", side_effect=subprocess.TimeoutExpired("look", 600)):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                engine.tool("look", [self.source, "--at", 1, "--json"])
+        self.assertEqual(engine.commands[-1]["exit_code"], None)
+        self.assertIn("timed out", engine.commands[-1]["error"])
+        self.assertGreaterEqual(engine.commands[-1]["seconds"], 0)
+
+    def test_nonfinite_cli_timestamp_cannot_break_failure_logging(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
+            main(["frames", "clip.mp4", "--at", "nan", "--root", str(self.root)])
+        self.assertEqual(raised.exception.code, 2)
 
 
 if __name__ == "__main__":

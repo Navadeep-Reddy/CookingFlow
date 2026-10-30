@@ -160,16 +160,72 @@ def lut_flag(strength, commands):
     raise ValueError("Unrecognized LUT blend semantics; inspect this skill version before grading")
 
 
+def validate_grade(grade, shot_ids, engine):
+    """Reject ambiguous/unsupported decisions before any picture encoding."""
+    if grade.get("status") != "complete":
+        raise ValueError("Grade decisions must be complete before rendering")
+    overrides = grade.get("per_shot_overrides", {})
+    if not isinstance(overrides, dict) or set(overrides) - set(shot_ids):
+        raise ValueError("Grade overrides must map known shot IDs to settings")
+    if any(not isinstance(v, dict) for v in overrides.values()):
+        raise ValueError("Each grade override must be an object")
+    preparation = grade.get("input_preparation", {})
+    if not isinstance(preparation, dict):
+        raise ValueError("grade.input_preparation must be an object")
+    for name, prep in preparation.items():
+        if not isinstance(prep, dict):
+            raise ValueError(f"input_preparation.{name} must be an object")
+        for field in ("operations", "corrections"):
+            value = prep.get(field, [])
+            if not isinstance(value, list):
+                raise ValueError(f"input_preparation.{name}.{field} must be a list; use [] for none")
+            if value:
+                raise ValueError("Apply technical input conversions/corrections before this runner")
+    default = {k: grade[k] for k in ("lut_path", "strength")}
+    for settings in [default] + [default | override for override in overrides.values()]:
+        if set(settings) != {"lut_path", "strength"}:
+            raise ValueError("Only lut_path/strength per-shot grade overrides are supported")
+        if (isinstance(settings["strength"], bool) or not isinstance(settings["strength"], (int, float)) or
+                not 0 <= E.number(settings["strength"], "LUT strength") <= 1):
+            raise ValueError("LUT strength must be a number in [0,1]")
+        E.identity(engine.source(settings["lut_path"]))
+    return default
+
+
+def loudness_only_gap(result):
+    failures = [s for s in result.get("verification", []) if not s.get("ok")]
+    return (result.get("status") == "completed" and bool(failures) and
+            all(s.get("step") == "loudness" for s in failures) and
+            any(s.get("step") == "probe" and s.get("ok") for s in result.get("verification", [])) and
+            isinstance(result.get("loudness"), dict))
+
+
 class Runner(E.Evidence):
     def __init__(self, root=E.ROOT, cache="workdir/render-cache"):
         super().__init__(root, cache)
         self.version = E.digest([self.version, E.file_hash(__file__)])
         self.steps = []
+        self.lut_compatibility = {}
 
-    def step(self, label, tool, args, inputs, suffix=".mp4", expected=None, target=None):
+    def step(self, label, tool, args, inputs, suffix=".mp4", expected=None, target=None,
+             allow_loudness_gap=False):
+        started, command_start = time.monotonic(), len(self.commands)
+        try:
+            result = self._step(label, tool, args, inputs, suffix=suffix, expected=expected,
+                                target=target, allow_loudness_gap=allow_loudness_gap)
+            self.steps[-1]["status"] = "completed"
+            return result
+        except (ValueError, KeyError, TypeError, OSError, subprocess.TimeoutExpired) as exc:
+            self.steps.append(dict(label=label, tool=tool, status="failed", cache="miss",
+                                   seconds=time.monotonic() - started, error=str(exc),
+                                   arguments=list(map(str, args)), commands=self.commands[command_start:]))
+            raise
+
+    def _step(self, label, tool, args, inputs, suffix=".mp4", expected=None, target=None,
+              allow_loudness_gap=False):
         stamps = [E.identity(p) for p in inputs]
         key = E.digest([self.version, tool, list(map(str, args)), stamps, expected, suffix,
-                        str(target) if target else None])
+                        str(target) if target else None, allow_loudness_gap])
         target = Path(target) if target else self.cache / f"{key}{suffix}"
         record = self.cache / f"{key}.result.json"
         started = time.monotonic()
@@ -182,6 +238,8 @@ class Runner(E.Evidence):
                 if expected:
                     validate_probe(saved["result"]["probe"], expected)
                 result = saved["result"]
+                if not result.get("verified") and not (allow_loudness_gap and loudness_only_gap(result)):
+                    raise ValueError("Unverified cached artifact")
                 hit = True
             except (OSError, ValueError, KeyError, TypeError):
                 self.help_once(tool)
@@ -191,7 +249,8 @@ class Runner(E.Evidence):
                 dry = self.tool(tool, [*argv, "--dry-run"])
                 E.atomic_json(self.cache / f"{key}.dry.json", dry)
                 result = self.tool(tool, argv)
-                if suffix in (".mp4", ".wav") and not result.get("verified"):
+                if suffix in (".mp4", ".wav") and not result.get("verified") and not (
+                        allow_loudness_gap and tool == "export" and loudness_only_gap(result)):
                     raise ValueError(f"{label} did not produce a verified media artifact")
                 if expected:
                     validate_probe(result["probe"], expected)
@@ -204,6 +263,52 @@ class Runner(E.Evidence):
                                    commands=result.get("commands", []), expected=expected,
                                    sha256=saved["sha256"]))
         return target, result
+
+    def apply_grade(self, label, source, settings, expected):
+        """Shared by previews and delivery: strength always means LUT contribution."""
+        lut = self.source(settings["lut_path"])
+        strength = E.number(settings["strength"], "LUT strength")
+        if not 0 <= strength <= 1:
+            raise ValueError("LUT strength must be in [0,1]")
+        if not strength:
+            return source
+        if str(lut) not in self.lut_compatibility:
+            path = self.cache / f"{E.digest([self.version, E.identity(lut), 'lut-compat'])}.json"
+            try:
+                dry = E.read_json(path)
+                lut_flag(.5, dry["commands"])
+            except (OSError, ValueError, KeyError, TypeError):
+                self.help_once("color")
+                dry = self.tool("color", [source, "--lut", lut, "--lut-strength", .5,
+                                          "-o", self.cache / "compatibility-unused.mp4", "--dry-run", "--json"])
+                lut_flag(.5, dry["commands"])
+                E.atomic_json(path, dry)
+            self.lut_compatibility[str(lut)] = dict(commands=dry["commands"], tool_fingerprint=self.version)
+        flag = lut_flag(strength, self.lut_compatibility[str(lut)]["commands"])
+        output, _ = self.step(label, "color", [source, "--lut", lut, "--lut-strength", flag,
+                               "--quality", 18, "--preset", "superfast"], [source, lut], expected=expected)
+        self.steps[-1].update(intended_lut_contribution=strength, executed_lut_flag=flag,
+                              lut_identity=E.identity(lut))
+        return output
+
+    def delivery(self, mixed, expected):
+        # Cache the picture encode even if its sole verification gap is loudness.
+        final, doc = self.step("delivery-picture", "export",
+                               [mixed, "--preset", "reels", "--no-scale", "--normalize"],
+                               [mixed], expected=expected, allow_loudness_gap=True)
+        loudness = doc.get("loudness") or {}
+        if (not isinstance(loudness.get("tp"), (int, float)) or
+                not isinstance(loudness.get("lufs"), (int, float)) or
+                not math.isfinite(loudness["tp"]) or not math.isfinite(loudness["lufs"])):
+            raise ValueError("Delivery loudness was not measured; cannot approve or recover automatically")
+        if not doc.get("verified") or loudness["tp"] > -1 or abs(loudness["lufs"] + 14) > 2:
+            final, doc = self.step("delivery-audio-recovery", "loudness",
+                                   [final, "-I", -14, "--tp", -1.5], [final], expected=expected)
+            measured = doc.get("result", {})
+            if (E.number(measured["input_tp"], "delivery true peak") > -1 or
+                    abs(E.number(measured["input_i"], "delivery LUFS") + 14) > 2):
+                raise ValueError("Audio-only recovery did not meet strict delivery loudness limits")
+        return final, doc
 
     def project(self, value):
         path = self.cache / f"{E.digest(value)}.project.json"
@@ -263,42 +368,8 @@ class Runner(E.Evidence):
 def run_edit(engine, compiled, grade, policy, mode):
     parts = []
     override_map = grade.get("per_shot_overrides", {})
-    if set(override_map) - {s["id"] for s in compiled["shots"]}:
-        raise ValueError("Grade overrides reference unknown shots")
-    if grade.get("status") != "complete":
-        raise ValueError("Grade decisions must be complete before rendering")
-    for prep in grade.get("input_preparation", {}).values():
-        if prep.get("corrections") or prep.get("operations"):
-            raise ValueError("Apply technical input conversions/corrections before this runner")
-    compat = {}
-
-    def apply_grade(label, source, settings, expected):
-        if set(settings) - {"lut_path", "strength"}:
-            raise ValueError("Only lut_path/strength per-shot grade overrides are supported")
-        lut = engine.source(settings["lut_path"])
-        strength = E.number(settings["strength"], "LUT strength")
-        if not 0 <= strength <= 1:
-            raise ValueError("LUT strength must be in [0,1]")
-        if not strength:
-            return source
-        if str(lut) not in compat:
-            path = engine.cache / f"{E.digest([engine.version, E.identity(lut), 'lut-compat'])}.json"
-            try:
-                dry = E.read_json(path)
-                lut_flag(.5, dry["commands"])
-            except (OSError, ValueError, KeyError, TypeError):
-                engine.help_once("color")
-                dry = engine.tool("color", [source, "--lut", lut, "--lut-strength", .5,
-                                            "-o", engine.cache / "compatibility-unused.mp4", "--dry-run", "--json"])
-                lut_flag(.5, dry["commands"])
-                E.atomic_json(path, dry)
-            compat[str(lut)] = dict(partial_flag_for_half=lut_flag(.5, dry["commands"]),
-                                   commands=dry["commands"], tool_fingerprint=engine.version)
-        flag = lut_flag(strength, compat[str(lut)]["commands"])
-        return engine.step(label, "color", [source, "--lut", lut, "--lut-strength", flag,
-                           "--quality", 18, "--preset", "superfast"], [source, lut], expected=expected)[0]
-
-    frame, global_grade = compiled["frame"], {k: grade[k] for k in ("lut_path", "strength")}
+    global_grade = validate_grade(grade, [s["id"] for s in compiled["shots"]], engine)
+    frame = compiled["frame"]
     for shot in compiled["shots"]:
         sid = shot["id"]
         source = engine.source(shot["clip"])
@@ -331,23 +402,23 @@ def run_edit(engine, compiled, grade, policy, mode):
         part, _ = engine.step(f"{sid}-audio", "audio", [part, "--gain", gain, "--fade-in", audio["fade_in"],
                                "--fade-out", audio["fade_out"]], [part], expected=expected)
         if override_map:
-            part = apply_grade(f"{sid}-grade", part, global_grade | override_map.get(sid, {}), expected)
+            part = engine.apply_grade(f"{sid}-grade", part, global_grade | override_map.get(sid, {}), expected)
         parts.append(part)
     total = dict(**frame, fps=30, nb_frames=compiled["total_frames"])
     assembled, _ = engine.render_project("assembly", dict(clips=[dict(src=str(p)) for p in parts],
                                           frame=dict(**frame, fps=30),
                                           transition=dict(type="none", duration=0)), parts, total)
-    graded = assembled if override_map else apply_grade("grade", assembled, global_grade, total)
+    graded = assembled if override_map else engine.apply_grade("grade", assembled, global_grade, total)
     song = engine.source(compiled["music"]["file"])
     bed, _ = engine.step("music-section", "cut", [song, "--start", compiled["music"]["start"],
                          "--duration", compiled["duration"], "--accurate"], [song], suffix=".wav")
     mixed, _ = engine.render_project("mix", dict(clips=[dict(src=str(graded))],
         audio=dict(music=str(bed), music_volume=policy["music_gain_db"],
                    music_fade_out=0, fade_in=policy.get("mix_fade_in", 0), fade_out=0, stereo=True)), [graded, bed], total)
-    final, final_doc = engine.step("delivery", "export", [mixed, "--preset", "reels", "--no-scale", "--normalize"], [mixed], expected=total | {"delivery": True})
+    final, final_doc = engine.delivery(mixed, total | {"delivery": True})
     check = engine.check(final)
     return dict(final=str(final), probe=final_doc["probe"], cooking_stem=str(assembled),
-                music_stem=str(bed), check=check, lut_compatibility=compat)
+                music_stem=str(bed), check=check, lut_compatibility=engine.lut_compatibility)
 
 
 def audio_evidence(engine, result):
@@ -425,6 +496,12 @@ def main(argv=None):
             out = destination
             E.atomic_json(out / "manifest.json", dict(producer=PRODUCER, status="running"))
             plan, framing, grade, policy = [E.read_json(p) for p in source_paths[:4]]
+            validate_grade(grade, [s["id"] for s in plan["shots"]], engine)
+            lut_paths = list(dict.fromkeys([engine.source(grade["lut_path"]), *[
+                engine.source(v["lut_path"]) for v in grade.get("per_shot_overrides", {}).values()
+                if "lut_path" in v]]))
+            source_paths.extend(lut_paths)
+            stamps.extend(E.identity(p) for p in lut_paths)
             probes = {}
             for source in dict.fromkeys(s["clip"] for s in plan["shots"]):
                 _, _, probes[source] = engine.probe(source)
@@ -453,9 +530,7 @@ def main(argv=None):
                             source_media=media_stamps,
                             result=result, steps=engine.steps, commands=engine.commands,
                             elapsed_seconds=time.monotonic() - started, editorial_review="pending")
-            E.atomic_json(out / "manifest.json", manifest)
-            with (out / "runs.jsonl").open("a") as stream:
-                stream.write(json.dumps(manifest) + "\n")
+            E.publish_run(out, manifest)
             print(json.dumps(dict(status=manifest["status"], manifest=str(out / "manifest.json"),
                                   final=result.get("final"), elapsed_seconds=manifest["elapsed_seconds"],
                                   hits=sum(s["cache"] == "hit" for s in engine.steps),
@@ -463,8 +538,10 @@ def main(argv=None):
         return 0
     except (ValueError, KeyError, TypeError, OSError, subprocess.TimeoutExpired) as exc:
         if out:
-            E.atomic_json(out / "manifest.json", dict(producer=PRODUCER, status="failed", error=str(exc),
-                                                     steps=engine.steps, commands=engine.commands))
+            E.publish_run(out, dict(producer=PRODUCER, status="failed", error=str(exc),
+                                   time_ns=time.time_ns(), mode=args.mode,
+                                   elapsed_seconds=time.monotonic() - started,
+                                   steps=engine.steps, commands=engine.commands))
         print(json.dumps(dict(status="failed", error=str(exc))), file=sys.stderr)
         return 1
 

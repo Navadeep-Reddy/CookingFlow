@@ -41,10 +41,10 @@ from scipy.io import wavfile
 
 try:
     from .evidence import (Evidence, ROOT, atomic_json, atomic_text, digest,
-                           file_hash, identity, lock, number, read_json)
+                           file_hash, identity, lock, number, read_json, publish_run)
 except ImportError:
     from evidence import (Evidence, ROOT, atomic_json, atomic_text, digest,
-                          file_hash, identity, lock, number, read_json)
+                          file_hash, identity, lock, number, read_json, publish_run)
 
 
 PRODUCER = "reel-music"
@@ -448,9 +448,7 @@ def main(argv=None):
                             elapsed_seconds=round(time.monotonic() - started, 4),
                             handoff_sha256=file_hash(handoff_path) if handoff else None,
                             editorial_review="pending")
-            atomic_json(out / "manifest.json", manifest)
-            with (out / "runs.jsonl").open("a") as stream:
-                stream.write(json.dumps(manifest) + "\n")
+            publish_run(out, manifest)
         print(json.dumps(dict(status=analysis["status"], analysis=str(out / "analysis.json"),
                               music=str(handoff_path) if handoff else None,
                               published=str(publish) if publish and handoff else None,
@@ -459,8 +457,9 @@ def main(argv=None):
         return 0 if handoff else 2
     except (ValueError, KeyError, TypeError, OSError, subprocess.TimeoutExpired) as exc:
         if owned_out:
-            atomic_json(owned_out / "manifest.json",
-                        dict(producer=PRODUCER, status="failed", error=str(exc)))
+            publish_run(owned_out, dict(producer=PRODUCER, status="failed", error=str(exc),
+                                       elapsed_seconds=time.monotonic() - started,
+                                       commands=engine.commands, cache=engine.stats))
         print(json.dumps(dict(status="failed", error=str(exc))), file=sys.stderr)
         return 1
 

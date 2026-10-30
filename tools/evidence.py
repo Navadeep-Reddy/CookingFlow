@@ -82,6 +82,16 @@ def atomic_text(path, text):
         Path(tmp).unlink(missing_ok=True)
 
 
+def publish_run(directory, manifest):
+    """Preserve successes and failures; the caller owns its report directory."""
+    manifest = dict(manifest)
+    manifest.setdefault("time_ns", time.time_ns())
+    with lock(Path(directory) / ".runs.lock"):
+        atomic_json(Path(directory) / "manifest.json", manifest)
+        with (Path(directory) / "runs.jsonl").open("a") as log:
+            log.write(json.dumps(manifest, allow_nan=False) + "\n")
+
+
 @contextmanager
 def lock(path):
     # Separate processes (e.g. framing and grading agents) share the same cache.
@@ -228,10 +238,16 @@ class Evidence:
     def tool(self, name, args):
         command = [sys.executable, str(self.scripts / f"{name}.py"), *map(str, args)]
         start = time.monotonic()
-        p = subprocess.run(command, capture_output=True, text=True, timeout=600, cwd=self.root)
+        try:
+            p = subprocess.run(command, capture_output=True, text=True, timeout=600, cwd=self.root)
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            self.commands.append(dict(command=command, seconds=round(time.monotonic() - start, 4),
+                                      exit_code=None, error=str(exc)))
+            raise
         entry = dict(command=command, seconds=round(time.monotonic() - start, 4), exit_code=p.returncode)
         self.commands.append(entry)
         if p.returncode:
+            entry.update(stdout=p.stdout[-4000:], stderr=p.stderr[-4000:])
             raise ValueError(f"Skill {name}.py failed: {p.stdout}\n{p.stderr}")
         try:
             result = json.loads(p.stdout)
@@ -397,29 +413,48 @@ def main(argv=None):
     parser.add_argument("--framing", help="framing.json for shots (exact crop or legacy zoom/center)")
     parser.add_argument("--plan", help="plan.json for cuts")
     parser.add_argument("--include-outside", action="store_true", help="shots: add first excluded frame; must be before EOF")
-    parser.add_argument("--width", type=int, default=540, help="frame preview width; survey uses total sheet width")
+    parser.add_argument("--width", type=int, help="frame width (default 540); explicit survey total width (legacy)")
+    parser.add_argument("--tile-width", type=int, help="survey: width per tile (default 360); excludes --width")
     parser.add_argument("--tiles", default="4x3", help="survey grid")
     parser.add_argument("--jobs", type=int, default=2, help="parallel skill batches (1..4)")
     args = parser.parse_args(argv)
-    if args.width < 2 or not 1 <= args.jobs <= 4:
-        parser.error("--width must be >= 2; --jobs must be 1..4")
+    if (args.width is not None and args.width < 2 or
+            args.tile_width is not None and args.tile_width < 2 or not 1 <= args.jobs <= 4):
+        parser.error("--width/--tile-width must be >= 2; --jobs must be 1..4")
+    if args.at and any(not math.isfinite(t) for t in args.at):
+        parser.error("--at timestamps must be finite")
+    if args.tile_width is not None and (args.mode != "survey" or args.width is not None):
+        parser.error("--tile-width is survey-only and cannot be combined with --width")
+    if args.mode != "survey" and args.width is None:
+        args.width = 540
     if args.mode == "frames" and not args.at or args.mode == "cuts" and not args.plan:
         parser.error("frames requires --at; cuts requires --plan")
     started = time.monotonic()
+    out = None
+    engine = None
     try:
         engine = Evidence(args.root, args.cache, args.jobs)
-        out = engine.generated(args.out or f"workdir/evidence/{args.mode}")
-        out.mkdir(parents=True, exist_ok=True)
-        with lock(out / ".lock"):
-            owner = out / ".owner"
+        destination = engine.generated(args.out or f"workdir/evidence/{args.mode}")
+        destination.mkdir(parents=True, exist_ok=True)
+        with lock(destination / ".lock"):
+            owner = destination / ".owner"
             if owner.exists() and owner.read_text() != PRODUCER:
-                raise ValueError(f"Report directory belongs to another tool: {out}")
-            if not owner.exists() and any(p.name != ".lock" for p in out.iterdir()):
-                raise ValueError(f"Refusing to replace an existing non-owned report: {out}")
+                raise ValueError(f"Report directory belongs to another tool: {destination}")
+            if not owner.exists() and any(p.name != ".lock" for p in destination.iterdir()):
+                raise ValueError(f"Refusing to replace an existing non-owned report: {destination}")
             atomic_text(owner, PRODUCER)
+            out = destination
             if args.mode == "survey":
                 source, stamp, meta = engine.probe(args.input)
                 cols, rows = map(int, args.tiles.lower().split("x"))
+                if min(cols, rows) < 1 or cols * rows > 256:
+                    raise ValueError("Survey requires 1..256 tiles")
+                available = int((meta["video"].get("fps") or 0) * float(meta["duration"])) or 1
+                if cols * rows > available:
+                    cols, rows = min(cols, available), 1
+                if args.width is None:
+                    args.tile_width = args.tile_width or 360
+                    args.width = cols * args.tile_width
                 if min(cols, rows) < 1 or cols * rows > 256 or args.width < 2 * cols:
                     raise ValueError("Survey requires 1..256 tiles and at least 2 pixels per column")
                 key = digest([engine.version, stamp, args.width, cols, rows, "survey"])
@@ -432,35 +467,39 @@ def main(argv=None):
                         engine.help_once("look")
                         with tempfile.TemporaryDirectory(dir=engine.cache) as tmp:
                             png = Path(tmp) / "survey.png"
-                            engine.tool("look", [source, "--tiles", args.tiles, "--width", args.width, "-o", png, "--json"])
+                            engine.tool("look", [source, "--tiles", f"{cols}x{rows}", "--width", args.width, "-o", png, "--json"])
                             if identity(source) != stamp:
                                 raise ValueError("Input changed during survey")
                             image = engine.store_image(key, png)
-                items = [dict(id="survey", label=args.tiles, source=str(source), source_identity=stamp,
+                items = [dict(id="survey", label=f"{cols}x{rows}", source=str(source), source_identity=stamp,
                               source_time=0, image=str(image), source_width=dimensions(meta)[0],
-                              source_height=dimensions(meta)[1])]
+                              source_height=dimensions(meta)[1], tile_width=(args.width // cols) // 2 * 2,
+                              sample_interval_seconds=float(meta["duration"]) / (cols * rows),
+                              purpose="orientation; brief actions require targeted frame inspection")]
+                if items[0]["tile_width"] < 240:
+                    items[0]["readability_note"] = "Small tiles: use --tile-width or inspect individual frames for action detail"
             else:
                 items = build_items(args, engine)
             for item in items:
                 if identity(item["source"]) != item["source_identity"]:
                     raise ValueError(f'Input changed while building evidence: {item["source"]}')
-            manifest = dict(producer=PRODUCER, schema=SCHEMA, tool_fingerprint=engine.version,
+            manifest = dict(producer=PRODUCER, status="completed", schema=SCHEMA, tool_fingerprint=engine.version,
                             parameters=vars(args) | {"root": str(args.root)}, items=items,
                             cache=dict(hits=engine.hits, misses=engine.misses), commands=engine.commands,
                             elapsed_seconds=round(time.monotonic() - started, 4), visual_review="pending")
             atomic_text(out / "report.html", html_report(items, out))
-            atomic_json(out / "manifest.json", manifest)
-            with (out / "runs.jsonl").open("a") as log:
-                log.write(json.dumps(dict(time_ns=time.time_ns(), cache=manifest["cache"],
-                                          elapsed_seconds=manifest["elapsed_seconds"],
-                                          tool_fingerprint=engine.version,
-                                          commands=engine.commands)) + "\n")
+            publish_run(out, manifest)
         print(json.dumps(dict(status="completed", report=str(out / "report.html"),
                               manifest=str(out / "manifest.json"), samples=len(items),
                               cache=manifest["cache"], skill_calls=len(engine.commands),
                               elapsed_seconds=manifest["elapsed_seconds"]), indent=2))
         return 0
     except (ValueError, KeyError, TypeError, ZeroDivisionError, OSError, subprocess.TimeoutExpired) as exc:
+        if out:
+            publish_run(out, dict(producer=PRODUCER, status="failed", error=str(exc),
+                                 parameters=vars(args) | {"root": str(args.root)},
+                                 elapsed_seconds=time.monotonic() - started,
+                                 commands=engine.commands, cache=dict(hits=engine.hits, misses=engine.misses)))
         print(json.dumps(dict(status="failed", error=str(exc))), file=sys.stderr)
         return 1
 
